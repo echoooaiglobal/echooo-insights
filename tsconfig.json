@@ -1,0 +1,59 @@
+{
+  "tsconfig.json": {
+    "compilerOptions": {
+      "target": "ES2020",
+      "module": "ESNext",
+      "moduleResolution": "node",
+      "lib": ["ES2020", "DOM", "DOM.Iterable"],
+      "declaration": true,
+      "declarationMap": true,
+      "sourceMap": true,
+      "outDir": "./dist",
+      "rootDir": "./src",
+      "removeComments": false,
+      "strict": true,
+      "noImplicitAny": true,
+      "strictNullChecks": true,
+      "strictFunctionTypes": true,
+      "strictBindCallApply": true,
+      "strictPropertyInitialization": true,
+      "noImplicitReturns": true,
+      "noFallthroughCasesInSwitch": true,
+      "noUncheckedIndexedAccess": true,
+      "noImplicitOverride": true,
+      "exactOptionalPropertyTypes": true,
+      "noPropertyAccessFromIndexSignature": false,
+      "allowUnusedLabels": false,
+      "allowUnreachableCode": false,
+      "skipLibCheck": true,
+      "forceConsistentCasingInFileNames": true,
+      "resolveJsonModule": true,
+      "allowSyntheticDefaultImports": true,
+      "esModuleInterop": true,
+      "experimentalDecorators": true,
+      "emitDecoratorMetadata": true,
+      "useDefineForClassFields": true,
+      "types": ["chrome"]
+    },
+    "include": [
+      "src/**/*",
+      "types/**/*"
+    ],
+    "exclude": [
+      "node_modules",
+      "dist",
+      "**/*.test.ts",
+      "**/*.spec.ts"
+    ]
+  },
+
+  "package.json_devDependencies_addition": {
+    "typescript": "^5.3.0",
+    "@types/chrome": "^0.0.254",
+    "@types/node": "^20.10.0",
+    "ts-loader": "^9.5.0",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.0",
+    "copy-webpack-plugin": "^11.0.0"
+  }
+}

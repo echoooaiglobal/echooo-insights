@@ -1,0 +1,52 @@
+{
+  "name": "echooo-insights",
+  "version": "1.0.0",
+  "description": "A powerful browser extension that provides instant influencer analytics and campaign management tools directly on Instagram profiles.",
+  "main": "dist/background.js",
+  "scripts": {
+    "build": "webpack --mode=production",
+    "dev": "webpack --mode=development --watch",
+    "clean": "rimraf dist",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "prebuild": "npm run clean && npm run type-check",
+    "postbuild": "echo 'Build completed! Load the dist folder as an unpacked extension in Chrome.'"
+  },
+  "keywords": [
+    "chrome-extension",
+    "browser-extension",
+    "influencer-analytics",
+    "instagram",
+    "social-media",
+    "typescript"
+  ],
+  "author": "Echooo Team",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "@types/chrome": "^0.0.254",
+    "@types/node": "^20.10.0",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.0",
+    "ts-loader": "^9.5.0",
+    "copy-webpack-plugin": "^11.0.0",
+    "rimraf": "^5.0.5",
+    "eslint": "^8.54.0",
+    "@typescript-eslint/eslint-plugin": "^6.12.0",
+    "@typescript-eslint/parser": "^6.12.0"
+  },
+  "dependencies": {},
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/echooo-insights.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/echooo-insights/issues"
+  },
+  "homepage": "https://echooo.ai"
+}
