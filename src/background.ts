@@ -90,7 +90,6 @@ function setupAllEventListeners(): void {
         }
     });
 
-    // Set up API interceptors
     console.log('API interceptors set up for monitoring auth tokens');
 }
 
@@ -137,6 +136,9 @@ async function handleJWTDetection(data: BackgroundAuthData): Promise<void> {
             updateBadge('✓');
             console.log('Auth data stored successfully');
             notifyContentScript('AUTH_SAVED', { success: true });
+            
+            // Notify popup about new auth
+            notifyPopup('USER_REGISTERED', { success: true });
         }
     } catch (error) {
         console.error('Error handling JWT detection:', error);
@@ -165,6 +167,9 @@ async function handleMessage(message: BackgroundMessageData, sender: chrome.runt
 
             case 'CLEAR_AUTH_DATA':
                 await clearAuthData();
+                updateBadge();
+                // Notify all tabs about logout
+                notifyAllTabs('USER_LOGGED_OUT', {});
                 sendResponse({ success: true });
                 break;
 
@@ -235,7 +240,6 @@ async function clearAuthData(): Promise<void> {
     return new Promise((resolve) => {
         chrome.storage.local.clear(() => {
             console.log('Auth data cleared');
-            updateBadge();
             resolve();
         });
     });
@@ -273,6 +277,7 @@ async function validateAndSyncUser(authData: BackgroundAuthData): Promise<void> 
             console.warn('User validation failed:', response.status);
             if (response.status === 401 || response.status === 403) {
                 await clearAuthData();
+                updateBadge();
             }
         }
 
@@ -294,13 +299,17 @@ async function analyzeProfile(data: { url: string; platform: string }): Promise<
             })
         });
 
-        const result: BackgroundApiResponse = await response.json();
-        
-        if (result.success) {
+        if (response.ok) {
+            const result: BackgroundApiResponse = await response.json();
             console.log('Profile analysis completed:', result.data);
             showNotification('Profile analysis completed!', `Analysis for ${data.platform} profile is ready.`);
             return true;
         } else {
+            if (response.status === 401 || response.status === 403) {
+                await clearAuthData();
+                return false;
+            }
+            const result: BackgroundApiResponse = await response.json();
             throw new Error(result.error || 'Analysis failed');
         }
     }) ?? false;
@@ -320,13 +329,17 @@ async function saveProfileToCampaign(data: { url: string; platform: string }): P
             })
         });
 
-        const result: BackgroundApiResponse = await response.json();
-        
-        if (result.success) {
+        if (response.ok) {
+            const result: BackgroundApiResponse = await response.json();
             console.log('Profile saved to campaign:', result.data);
             showNotification('Profile Saved!', `${data.platform} profile added to your campaign.`);
             return true;
         } else {
+            if (response.status === 401 || response.status === 403) {
+                await clearAuthData();
+                return false;
+            }
+            const result: BackgroundApiResponse = await response.json();
             throw new Error(result.error || 'Save failed');
         }
     }) ?? false;
@@ -384,6 +397,26 @@ function notifyContentScript(type: string, data: any): void {
         if (tabs[0] && tabs[0].id) {
             chrome.tabs.sendMessage(tabs[0].id, { type, data });
         }
+    });
+}
+
+function notifyPopup(type: string, data: any): void {
+    // Try to notify any open popup
+    chrome.runtime.sendMessage({ type, data }).catch(() => {
+        // Popup might not be open, which is fine
+        console.log('No popup to notify');
+    });
+}
+
+function notifyAllTabs(type: string, data: any): void {
+    chrome.tabs.query({}, (tabs) => {
+        tabs.forEach(tab => {
+            if (tab.id) {
+                chrome.tabs.sendMessage(tab.id, { type, data }).catch(() => {
+                    // Tab might not have content script, which is fine
+                });
+            }
+        });
     });
 }
 

@@ -207,9 +207,9 @@ declare namespace chrome {
       css?: string;
     }
 
-    interface InjectionResult {
+    interface InjectionResult<T = any> {
       frameId: number;
-      result?: any;
+      result?: T;
       error?: any;
     }
   }
@@ -363,15 +363,7 @@ interface ApiResponse<T = any> {
   };
 }
 
-interface CategoryData {
-  id: number;
-  name: string;
-  description?: string;
-  count: number;
-  created_at: string;
-  updated_at: string;
-}
-
+// Campaign data interface (categories removed)
 interface CampaignData {
   id: number;
   name: string;
@@ -403,8 +395,8 @@ type MessageHandler<T = any> = (message: ExtensionMessage, sender: chrome.runtim
 
 type AsyncMessageHandler<T = any> = (message: ExtensionMessage, sender: chrome.runtime.MessageSender) => Promise<ExtensionResponse>;
 
-// Storage utility types
-type StorageKeys = keyof StoredAuthData | 'categories' | 'campaigns' | 'profileCache' | 'settings';
+// Storage utility types (categories removed)
+type StorageKeys = keyof StoredAuthData | 'campaigns' | 'profileCache' | 'settings';
 
 // Content script injection types
 interface ContentScriptContext {
@@ -422,14 +414,13 @@ interface BackgroundContext {
   version: string;
 }
 
-// Export for module usage if needed
+// Export for module usage if needed (categories removed)
 export {
   ExtensionMessage,
   ExtensionResponse,
   ProfileData,
   StoredAuthData,
   ApiResponse,
-  CategoryData,
   CampaignData,
   MessageHandler,
   AsyncMessageHandler,

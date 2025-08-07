@@ -30,6 +30,7 @@ interface ContentMessageData {
 // Global state variables
 let currentPlatform: string = '';
 let isInitialized: boolean = false;
+let echoButton: HTMLElement | null = null;
 
 // Main initialization function
 function initializeContentScript(): void {
@@ -51,8 +52,17 @@ function initializeContentScript(): void {
 
 function detectPlatform(): string {
     const hostname = window.location.hostname.toLowerCase();
+    const pathname = window.location.pathname.toLowerCase();
     
-    if (hostname.includes('instagram.com')) return 'instagram';
+    if (hostname.includes('instagram.com')) {
+        // Check if we're on a profile page
+        if (pathname.includes('/') && pathname !== '/' && !pathname.includes('/explore') && 
+            !pathname.includes('/reels') && !pathname.includes('/stories') && 
+            !pathname.includes('/direct') && !pathname.includes('/accounts')) {
+            return 'instagram';
+        }
+        return 'instagram-home';
+    }
     if (hostname.includes('twitter.com') || hostname.includes('x.com')) return 'twitter';
     if (hostname.includes('linkedin.com')) return 'linkedin';
     if (hostname.includes('tiktok.com')) return 'tiktok';
@@ -63,13 +73,41 @@ function detectPlatform(): string {
     return 'unknown';
 }
 
+function isInstagramProfile(): boolean {
+    const pathname = window.location.pathname;
+    
+    // Check if it's a profile page (username pattern)
+    const profilePattern = /^\/[a-zA-Z0-9._]+\/?$/;
+    const isProfilePage = profilePattern.test(pathname);
+    
+    // Also check for presence of profile elements
+    const hasProfileHeader = document.querySelector('header section') !== null;
+    const hasProfilePicture = document.querySelector('img[alt*="profile picture"], img[alt*="Profile picture"]') !== null;
+    
+    return isProfilePage && (hasProfileHeader || hasProfilePicture);
+}
+
 function injectEchoFeatures(): void {
-    addEchoButton();
-    setupProfileDetection();
+    // For Instagram, wait a bit longer for the page to load
+    if (currentPlatform === 'instagram') {
+        setTimeout(() => {
+            if (isInstagramProfile()) {
+                addEchoButton();
+                setupProfileDetection();
+            }
+        }, 2000);
+    } else {
+        addEchoButton();
+        setupProfileDetection();
+    }
 }
 
 function addEchoButton(): void {
-    if (document.querySelector('.echo-extension-button')) return;
+    // Remove existing button if present
+    if (echoButton) {
+        echoButton.remove();
+        echoButton = null;
+    }
 
     const button = document.createElement('button');
     button.className = 'echo-extension-button';
@@ -91,6 +129,7 @@ function addEchoButton(): void {
         cursor: pointer;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         transition: all 0.3s ease;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     `;
 
     button.addEventListener('mouseenter', () => {
@@ -106,6 +145,9 @@ function addEchoButton(): void {
     button.addEventListener('click', () => showQuickActionMenu());
 
     document.body.appendChild(button);
+    echoButton = button;
+    
+    console.log('Echo button added to', currentPlatform);
 }
 
 function setupProfileDetection(): void {
@@ -138,17 +180,67 @@ function getProfileData(): ProfileData {
 
 function getInstagramData(): ProfileData {
     try {
-        const usernameElement = document.querySelector('header section h2');
-        const bioElement = document.querySelector('header section div span');
-        const statsElements = document.querySelectorAll('header section ul li a span');
-        const postsElement = document.querySelector('header section ul li span span');
+        // Multiple selectors for different Instagram layouts
+        const usernameSelectors = [
+            'header section h2',
+            'h2._aa3a',
+            '[data-testid="user-name"]',
+            'h1'
+        ];
+        
+        const bioSelectors = [
+            'header section div span',
+            '.-vDIg span',
+            '[data-testid="user-bio"]'
+        ];
+        
+        const statsSelectors = [
+            'header section ul li a span',
+            'header ul li span span',
+            'a[href*="/followers/"] span',
+            'a[href*="/following/"] span'
+        ];
+
+        let username = '';
+        let bio = '';
+        let followers = '';
+        let following = '';
+        let posts = '';
+
+        // Try to get username
+        for (const selector of usernameSelectors) {
+            const element = document.querySelector(selector);
+            if (element && element.textContent) {
+                username = element.textContent.trim();
+                break;
+            }
+        }
+
+        // Try to get bio
+        for (const selector of bioSelectors) {
+            const element = document.querySelector(selector);
+            if (element && element.textContent) {
+                bio = element.textContent.trim();
+                break;
+            }
+        }
+
+        // Try to get stats
+        const statsElements = document.querySelectorAll('header section ul li');
+        if (statsElements.length >= 3) {
+            posts = statsElements[0]?.textContent?.trim() || 'Unknown';
+            followers = statsElements[1]?.textContent?.trim() || 'Unknown';
+            following = statsElements[2]?.textContent?.trim() || 'Unknown';
+        }
+
+        console.log('Instagram profile data extracted:', { username, bio, followers, following, posts });
 
         return {
-            username: usernameElement?.textContent || 'Unknown',
-            bio: bioElement?.textContent || '',
-            followers: statsElements[1]?.getAttribute('title') || statsElements[1]?.textContent || 'Unknown',
-            following: statsElements[2]?.textContent || 'Unknown',
-            posts: postsElement?.textContent || 'Unknown'
+            username: username || 'Unknown',
+            bio: bio || '',
+            followers: followers || 'Unknown',
+            following: following || 'Unknown',
+            posts: posts || 'Unknown'
         };
     } catch (error) {
         console.error('Error getting Instagram data:', error);
@@ -273,6 +365,7 @@ function showQuickActionMenu(): void {
         align-items: center;
         justify-content: center;
         z-index: 10001;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     `;
 
     const menuContent = menu.querySelector('.echo-menu-content') as HTMLElement;
@@ -555,6 +648,7 @@ function showSuccessNotification(message: string): void {
         z-index: 10002;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         font-weight: 600;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     `;
     
     document.body.appendChild(notification);
@@ -570,7 +664,7 @@ if (!window.echoExtensionContent) {
     initializeContentScript();
 }
 
-// Handle dynamic page changes (for SPAs)
+// Handle dynamic page changes (for SPAs like Instagram)
 let lastUrl: string = location.href;
 new MutationObserver(() => {
     const url: string = location.href;
@@ -578,11 +672,33 @@ new MutationObserver(() => {
         lastUrl = url;
         console.log('Page URL changed to:', url);
         
-        if (window.echoExtensionContent) {
+        // Re-detect platform and reinject features if needed
+        const newPlatform = detectPlatform();
+        if (newPlatform !== currentPlatform) {
+            currentPlatform = newPlatform;
+            console.log('Platform changed to:', currentPlatform);
+            
+            // Remove existing button
+            if (echoButton) {
+                echoButton.remove();
+                echoButton = null;
+            }
+            
+            // Reinject features for new platform
+            if (currentPlatform && currentPlatform !== 'unknown') {
+                setTimeout(() => {
+                    injectEchoFeatures();
+                }, 1000);
+            }
+        } else if (currentPlatform === 'instagram') {
+            // For Instagram, check if we moved to a profile page
             setTimeout(() => {
-                // Re-initialize for new page
-                isInitialized = false;
-                initializeContentScript();
+                if (isInstagramProfile() && !echoButton) {
+                    injectEchoFeatures();
+                } else if (!isInstagramProfile() && echoButton) {
+                    echoButton.remove();
+                    echoButton = null;
+                }
             }, 1000);
         }
     }
