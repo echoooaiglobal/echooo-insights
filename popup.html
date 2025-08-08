@@ -43,13 +43,13 @@
                 <h2 id="user-full-name">👋 Loading User...</h2>
             </div>
 
-            <!-- Categories Section -->
-            <div class="categories-section">
-                <h4>Categories (<span id="categories-count">0</span>)</h4>
-                <div id="categories-list" class="categories-list">
-                    <div class="category-item">
-                        <span class="category-name">Loading categories...</span>
-                        <span class="category-count">...</span>
+            <!-- UPDATED: Campaigns Section (previously Categories) -->
+            <div class="campaigns-section">
+                <h4>Campaigns (<span id="campaigns-count">0</span>)</h4>
+                <div id="campaigns-list" class="campaigns-list">
+                    <div class="campaign-item">
+                        <span class="campaign-name">Loading campaigns...</span>
+                        <span class="campaign-count">...</span>
                     </div>
                 </div>
             </div>
@@ -59,21 +59,18 @@
         <div id="error-state" class="section hidden">
             <div class="error-icon">⚠️</div>
             <h3>Connection Error</h3>
-            <p id="error-message">Unable to connect to backend service. Please check your connection and try again.</p>
-            <button id="retry-btn" class="secondary-btn">
-                🔄 Try Again
-            </button>
+            <p id="error-message">Unable to connect to backend service.</p>
+            <button id="retry-btn" class="retry-btn">Retry Connection</button>
         </div>
 
-        <!-- Current Page Analysis -->
+        <!-- Page Analysis Section -->
         <div id="page-analysis" class="section hidden">
-            <h4>Current Page Analysis</h4>
-            <div id="page-info" class="page-info">
-                <p><strong>🌐 URL:</strong> <span id="current-url">-</span></p>
-                <p><strong>📄 Title:</strong> <span id="current-title">-</span></p>
-                <div id="social-detection" class="social-detection">
-                    <strong>🔍 Platform Detection:</strong><br>
-                    <span style="color: #64748b;">Analyzing current page...</span>
+            <h4>Page Analysis</h4>
+            <div class="page-info">
+                <p><strong>URL:</strong> <span id="current-url">Loading...</span></p>
+                <p><strong>Platform:</strong> <span id="detected-platform">Detecting...</span></p>
+                <div class="social-detection">
+                    <div id="social-platforms"></div>
                 </div>
             </div>
         </div>

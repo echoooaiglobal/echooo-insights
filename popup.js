@@ -1,26 +1,252 @@
-// Popup script for Echo Outreach Agent Extension
+// File: popup.js
+// Popup script for Echo Outreach Agent Extension - Simplified Version
+
 class EchoExtensionPopup {
     constructor() {
         this.apiBaseUrl = 'http://localhost:8000/api/v0';
         this.frontendUrl = 'http://localhost:3000';
-        this.isRegistered = false;
         this.userData = null;
-        this.categoriesData = [];
+        this.campaignsData = [];
+        this.jwtToken = null;
         
         this.init();
     }
 
     async init() {
-        console.log('Echo Extension Popup initialized');
+        console.log('Echo Extension Popup initialized - Icon clicked!');
         
         // Set up event listeners
         this.setupEventListeners();
         
-        // Check authentication status
-        await this.checkAuthStatus();
+        // IMMEDIATELY call campaigns API when icon is clicked
+        await this.callCampaignsAPIImmediately();
+        
+        // Direct data retrieval without complex auth checks
+        await this.retrieveUserData();
         
         // Get current page info
         await this.getCurrentPageInfo();
+    }
+
+    async fetchCampaigns() {
+        console.log('🔄 Secondary campaigns fetch for UI display...');
+        
+        if (!this.jwtToken && localData.token && localData.companyData) {
+            console.error('No JWT token available for secondary API call');
+            this.showCampaignsError('No authentication token available');
+            return;
+        }
+
+        try {
+            const localData = await this.getLocalStorageData();
+            const company_id = localData.companyData.id || localData.companyData.company_id;
+            console.log('Company id = ', company_id);
+            // Use exact API endpoint as specified
+            const response = await fetch(`http://localhost:8000/api/v0/campaigns/company/${company_id}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${this.jwtToken}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            console.log('🔄 Secondary Campaigns API response status:', response.status);
+
+            if (response.ok) {
+                const data = await response.json();
+                console.log('🔄 Secondary Campaigns API response data:', data);
+                
+                // Handle different possible response structures
+                this.campaignsData = data.campaigns || data.data?.campaigns || data.data || [];
+                
+                if (Array.isArray(this.campaignsData)) {
+                    console.log('🔄 Successfully loaded campaigns for UI:', this.campaignsData.length);
+                    this.renderCampaigns();
+                } else {
+                    console.log('🔄 Campaigns data is not an array:', this.campaignsData);
+                    this.campaignsData = [];
+                    this.renderCampaigns();
+                }
+            } else {
+                const errorText = await response.text();
+                console.error('🔄 Secondary Campaigns API error:', response.status, errorText);
+                this.showCampaignsError(`API Error: ${response.status}`);
+            }
+        } catch (error) {
+            console.error('🔄 Secondary campaigns fetch failed:', error);
+            this.showCampaignsError('Network error: ' + error.message);
+        }
+    }
+
+    async retrieveUserData() {
+        console.log('Retrieving user data from localStorage...');
+        this.showSection('loading');
+
+        try {
+            // Get JWT token, user data, and company data from localStorage
+            const localData = await this.getLocalStorageData();
+            console.log('Retrieved localStorage data:', localData);
+
+            if (localData.token && localData.userData) {
+                this.jwtToken = localData.token;
+                this.userData = localData.userData;
+                this.companyData = localData.companyData; // Store company data
+                
+                console.log('JWT Token found:', !!this.jwtToken);
+                console.log('User Data:', this.userData);
+                console.log('Company Data:', this.companyData);
+                
+                // Display user information
+                this.displayUserInfo();
+                
+                // Fetch campaigns from backend using company ID
+                await this.fetchCampaigns();
+                
+                // Show dashboard
+                this.showSection('dashboard');
+                this.updateStats();
+                
+            } else {
+                console.log('No user data or token found in localStorage');
+                this.showRegistrationRequired();
+            }
+
+        } catch (error) {
+            console.error('Failed to retrieve user data:', error);
+            this.showError('Failed to retrieve user data: ' + error.message);
+        }
+    }
+
+    async getLocalStorageData() {
+        try {
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            
+            if (tab && tab.url && tab.url.startsWith('http://localhost:3000')) {
+                const results = await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    function: () => {
+                        // Get JWT token from various possible keys
+                        const token = localStorage.getItem('accessToken') || 
+                                     localStorage.getItem('authToken') || 
+                                     localStorage.getItem('token') ||
+                                     localStorage.getItem('jwt');
+                        
+                        // Get user data - stored with key 'user' in array format
+                        let userData = null;
+                        try {
+                            // Use 'user' as the primary key (as specified by user)
+                            const userDataStr = localStorage.getItem('user');
+                            if (userDataStr) {
+                                const parsed = JSON.parse(userDataStr);
+                                
+                                // Data is in array format, take the first element
+                                if (Array.isArray(parsed) && parsed.length > 0) {
+                                    userData = parsed[0];
+                                    console.log('Found user data as array with key "user", taking first element');
+                                } 
+                                // If it's an object, use it directly
+                                else if (parsed && typeof parsed === 'object') {
+                                    userData = parsed;
+                                    console.log('Found user data as object with key "user"');
+                                }
+                            }
+                            
+                            // Fallback to other possible keys if 'user' key doesn't exist
+                            if (!userData) {
+                                const fallbackKeys = ['userData', 'loggedInUser', 'currentUser'];
+                                
+                                for (const key of fallbackKeys) {
+                                    const userDataStr = localStorage.getItem(key);
+                                    if (userDataStr) {
+                                        const parsed = JSON.parse(userDataStr);
+                                        
+                                        // If it's an array, take the first element
+                                        if (Array.isArray(parsed) && parsed.length > 0) {
+                                            userData = parsed[0];
+                                            console.log(`Found user data as array with fallback key "${key}", taking first element`);
+                                            break;
+                                        } 
+                                        // If it's an object, use it directly
+                                        else if (parsed && typeof parsed === 'object') {
+                                            userData = parsed;
+                                            console.log(`Found user data as object with fallback key "${key}"`);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            console.log('Could not parse user data from localStorage:', e);
+                        }
+                        
+                        // Get company data - stored as array with ID
+                        let companyData = null;
+                        try {
+                            const companyStr = localStorage.getItem('company');
+                            if (companyStr) {
+                                const parsed = JSON.parse(companyStr);
+                                
+                                // If it's an array, take the first element
+                                if (Array.isArray(parsed) && parsed.length > 0) {
+                                    companyData = parsed[0];
+                                    console.log('Found company data as array, taking first element');
+                                } 
+                                // If it's an object, use it directly
+                                else if (parsed && typeof parsed === 'object') {
+                                    companyData = parsed;
+                                    console.log('Found company data as object');
+                                }
+                            }
+                        } catch (e) {
+                            console.log('Could not parse company data from localStorage:', e);
+                        }
+                        
+                        return { token, userData, companyData };
+                    }
+                });
+                
+                return results && results[0] && results[0].result || { token: null, userData: null, companyData: null };
+            }
+        } catch (error) {
+            console.log('Could not access localStorage:', error);
+        }
+        
+        return { token: null, userData: null, companyData: null };
+    }
+
+    displayUserInfo() {
+        const userFullName = document.getElementById('user-full-name');
+        if (userFullName && this.userData) {
+            // Use exact field names from your user data structure
+            const name = this.userData.full_name || this.userData.email || 'User';
+            const userType = this.userData.user_type;
+            
+            let displayText = `👋 Welcome, ${name}`;
+            
+            // Add user type indication
+            if (userType === 'b2c') {
+                displayText += ' (Personal)';
+            } else if (userType === 'b2b') {
+                displayText += ' (Business)';
+            }
+            
+            userFullName.textContent = displayText;
+            
+            // Log detailed user information using exact field names
+            console.log('Displaying user info:', {
+                id: this.userData.id,
+                email: this.userData.email,
+                full_name: this.userData.full_name,
+                phone_number: this.userData.phone_number,
+                email_verified: this.userData.email_verified,
+                status: this.userData.status,
+                user_type: this.userData.user_type,
+                last_login_at: this.userData.last_login_at,
+                created_at: this.userData.created_at,
+                updated_at: this.userData.updated_at,
+                profile_image_url: this.userData.profile_image_url
+            });
+        }
     }
 
     setupEventListeners() {
@@ -30,309 +256,122 @@ class EchoExtensionPopup {
             registerBtn.addEventListener('click', () => this.handleRegistration());
         }
 
-        // REMOVED: Open dashboard button event listener
-        // REMOVED: Logout button event listener
-
         // Retry button
         const retryBtn = document.getElementById('retry-btn');
         if (retryBtn) {
-            retryBtn.addEventListener('click', () => this.checkAuthStatus());
+            retryBtn.addEventListener('click', () => this.retrieveUserData());
         }
     }
 
-    async checkAuthStatus() {
-        console.log('Checking authentication status...');
-        this.showSection('loading');
-
+    // IMMEDIATE API CALL - Called as soon as icon is clicked
+    async callCampaignsAPIImmediately() {
+        console.log('🚀 IMMEDIATE CAMPAIGNS API CALL - Icon clicked!');
+        
         try {
-            // Check if user data exists in Chrome storage
-            const stored = await this.getStoredData();
-            console.log('Stored extension data:', stored);
-
-            // Also check browser localStorage for JWT token (from your frontend)
-            const localJWT = await this.getLocalStorageToken();
-            console.log('Local storage JWT found:', !!localJWT);
-
-            // Determine which token to use
-            const tokenToUse = stored.accessToken || localJWT;
-            const emailToUse = stored.userEmail || await this.getLocalStorageEmail();
-
-            if (tokenToUse) {
-                console.log('Token found, validating...');
+            // Get JWT token and company data immediately
+            const localData = await this.getLocalStorageData();
+            console.log('🔑 JWT Token retrieved:', !!localData.token);
+            console.log('🏢 Company Data retrieved:', localData.companyData);
+            
+            if (localData.token && localData.companyData) {
+                // Extract company ID from company data
+                const company_id = localData.companyData.id || localData.companyData.company_id;
+                console.log('🆔 Company ID extracted:', company_id);
                 
-                // Validate token with backend
-                const validationResult = await this.validateToken(tokenToUse);
-                
-                if (validationResult.isValid) {
-                    // Token is valid, setup user session
-                    this.isRegistered = true;
-                    this.userData = {
-                        accessToken: tokenToUse,
-                        userEmail: emailToUse || validationResult.userData?.email,
-                        userDetails: validationResult.userData
-                    };
-
-                    // Save to extension storage if not already saved
-                    if (!stored.accessToken || stored.accessToken !== tokenToUse) {
-                        await this.saveToStorage(this.userData);
-                    }
-
-                    // Load dashboard
-                    await this.loadDashboardData();
-                    this.showSection('dashboard');
+                if (company_id) {
+                    console.log('📡 Calling company-specific campaigns API endpoint...');
                     
-                    console.log('User authenticated successfully');
+                    // ONLY use company-specific endpoint
+                    const apiUrl = `http://localhost:8000/api/v0/campaigns/company/${company_id}`;
+                    console.log('🔗 API URL:', apiUrl);
+                    
+                    const response = await fetch(apiUrl, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${localData.token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    console.log('📊 CAMPAIGNS API RESPONSE STATUS:', response.status);
+                    console.log('📊 CAMPAIGNS API RESPONSE HEADERS:', Object.fromEntries(response.headers.entries()));
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log('✅ CAMPAIGNS API SUCCESS - Full Response:');
+                        console.log(JSON.stringify(data, null, 2));
+                        console.log('📈 Number of company campaigns found:', Array.isArray(data.campaigns) ? data.campaigns.length : Array.isArray(data.data) ? data.data.length : 'Not an array');
+                        
+                        // Store the response for later use
+                        this.campaignsAPIResponse = data;
+                    } else {
+                        const errorText = await response.text();
+                        console.error('❌ CAMPAIGNS API ERROR:');
+                        console.error('Status:', response.status);
+                        console.error('Status Text:', response.statusText);
+                        console.error('Error Response:', errorText);
+                    }
                 } else {
-                    // Token invalid, clear all storage and show registration
-                    await this.clearAllStorage();
-                    this.showRegistrationRequired();
+                    console.warn('⚠️ No Company ID found in company data');
+                    console.log('Company data structure:', localData.companyData);
                 }
             } else {
-                // No token found anywhere, show registration
-                console.log('No authentication token found');
-                this.showRegistrationRequired();
-            }
-        } catch (error) {
-            console.error('Auth check failed:', error);
-            this.showError('Authentication check failed. Please try again.');
-        }
-    }
-
-    async getLocalStorageToken() {
-        try {
-            // Inject script to get localStorage from the current tab
-            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            
-            if (tab && tab.url.includes('localhost:3000')) {
-                const result = await chrome.scripting.executeScript({
-                    target: { tabId: tab.id },
-                    func: () => {
-                        // Common JWT storage keys your frontend might use
-                        return localStorage.getItem('accessToken') || 
-                               localStorage.getItem('authToken') || 
-                               localStorage.getItem('token') ||
-                               localStorage.getItem('jwt') ||
-                               localStorage.getItem('access_token');
-                    }
-                });
-                
-                return result[0]?.result || null;
-            }
-        } catch (error) {
-            console.log('Could not access localStorage from current tab:', error);
-        }
-        return null;
-    }
-
-    async getLocalStorageEmail() {
-        try {
-            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            
-            if (tab && tab.url.includes('localhost:3000')) {
-                const result = await chrome.scripting.executeScript({
-                    target: { tabId: tab.id },
-                    func: () => {
-                        return localStorage.getItem('userEmail') || 
-                               localStorage.getItem('email') ||
-                               localStorage.getItem('user_email');
-                    }
-                });
-                
-                return result[0]?.result || null;
-            }
-        } catch (error) {
-            console.log('Could not access email from localStorage:', error);
-        }
-        return null;
-    }
-
-    async validateToken(token) {
-        try {
-            console.log('🔍 Validating token with /auth/me endpoint...');
-            
-            // Use auth/me endpoint to get ONLY logged-in user details
-            const authResponse = await fetch(`${this.apiBaseUrl}/auth/me`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
+                if (!localData.token) {
+                    console.warn('⚠️ No JWT token found - Cannot call campaigns API');
                 }
-            });
-
-            if (authResponse.ok) {
-                const userData = await authResponse.json();
-                console.log('✅ Token validation successful!');
-                console.log('✅ User data from token validation:', userData);
-                return {
-                    isValid: true,
-                    userData: userData
-                };
-            }
-
-            console.log('❌ Token validation failed - invalid token');
-            return { isValid: false };
-
-        } catch (error) {
-            console.error('❌ Token validation failed:', error);
-            return { isValid: false };
-        }
-    }
-
-    async loadDashboardData() {
-        try {
-            // Load categories data
-            await this.loadCategories();
-            
-            // Load user details if not already loaded
-            if (!this.userData.userDetails) {
-                await this.loadUserDetails();
-            }
-            
-            // Update stats and user info
-            this.updateStats();
-            this.updateUserInfo(); // This will display the user name
-            
-        } catch (error) {
-            console.error('Failed to load dashboard data:', error);
-            this.showError('Failed to load data from backend');
-        }
-    }
-
-    async loadUserDetails() {
-        try {
-            const token = this.userData?.accessToken;
-            if (!token) return;
-
-            console.log('🔑 Loading logged-in user details from /auth/me...');
-            
-            // Use auth/me endpoint to get ONLY current user's details
-            const response = await fetch(`${this.apiBaseUrl}/auth/me`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
+                if (!localData.companyData) {
+                    console.warn('⚠️ No company data found - Cannot get company ID');
                 }
-            });
-
-            if (response.ok) {
-                const userData = await response.json();
-                console.log('🎉 API Response - Logged-in user details:', userData);
-                console.log('🎉 User Name Fields Available:');
-                console.log('   full_name:', userData.full_name);
-                console.log('   name:', userData.name);
-                console.log('   first_name:', userData.first_name);
-                console.log('   email:', userData.email);
-                
-                // Store the current user's details
-                this.userData.userDetails = userData;
-                
-                // Update stored email if we got better info
-                if (userData.email) {
-                    this.userData.userEmail = userData.email;
-                    await this.saveToStorage(this.userData);
-                }
-                
-            } else {
-                console.error('❌ Failed to load user details. Status:', response.status);
-                console.error('❌ Response:', await response.text());
             }
         } catch (error) {
-            console.error('❌ Error loading user details:', error);
+            console.error('💥 CAMPAIGNS API CALL FAILED:');
+            console.error('Error Type:', error.name);
+            console.error('Error Message:', error.message);
+            console.error('Full Error:', error);
         }
     }
 
-    async loadCategories() {
-        try {
-            console.log('Loading categories from API...');
-            
-            const token = this.userData?.accessToken;
-            const headers = {
-                'Content-Type': 'application/json'
-            };
-            
-            if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
-            }
+    renderCampaigns() {
+        const campaignsList = document.getElementById('campaigns-list');
+        if (!campaignsList) return;
 
-            const response = await fetch(`${this.apiBaseUrl}/categories/`, {
-                method: 'GET',
-                headers: headers
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                this.categoriesData = Array.isArray(data) ? data : data.items || [];
-                this.renderCategories();
-                console.log('Categories loaded:', this.categoriesData);
-            } else {
-                throw new Error(`API responded with status: ${response.status}`);
-            }
-        } catch (error) {
-            console.error('Failed to load categories:', error);
-            // Show fallback message
-            const categoriesList = document.getElementById('categories-list');
-            if (categoriesList) {
-                categoriesList.innerHTML = '<div class="category-item">Unable to load categories</div>';
-            }
-        }
-    }
-
-    renderCategories() {
-        const categoriesList = document.getElementById('categories-list');
-        if (!categoriesList) return;
-
-        if (this.categoriesData.length === 0) {
-            categoriesList.innerHTML = '<div class="category-item">No categories available</div>';
+        if (!Array.isArray(this.campaignsData) || this.campaignsData.length === 0) {
+            campaignsList.innerHTML = '<div class="campaign-item">No campaigns available</div>';
             return;
         }
 
-        categoriesList.innerHTML = this.categoriesData.map(category => `
-            <div class="category-item">
-                <span class="category-name">${category.name || 'Unnamed Category'}</span>
-                <span class="category-count">${category.count || '0'}</span>
-            </div>
-        `).join('');
+        // Render campaigns using exact field names
+        campaignsList.innerHTML = this.campaignsData.map(campaign => {
+            // Use exact field names that might exist in your campaign data
+            const campaignName = campaign.name || campaign.title || campaign.campaign_name || 'Unnamed Campaign';
+            const campaignCount = campaign.influencer_count || campaign.count || campaign.total_influencers || '0';
+            
+            return `
+                <div class="campaign-item">
+                    <span class="campaign-name">${campaignName}</span>
+                    <span class="campaign-count">${campaignCount}</span>
+                </div>
+            `;
+        }).join('');
+    }
+
+    showCampaignsError(message) {
+        const campaignsList = document.getElementById('campaigns-list');
+        if (campaignsList) {
+            campaignsList.innerHTML = `<div class="campaign-item">Error: ${message}</div>`;
+        }
     }
 
     updateStats() {
-        const activeCampaigns = document.getElementById('active-campaigns');
-        const categoriesCount = document.getElementById('categories-count');
+        const campaignsCount = document.getElementById('campaigns-count');
 
-        if (activeCampaigns) {
-            // You can get this from your campaigns API
-            activeCampaigns.textContent = this.userData?.activeCampaigns || '0';
-        }
-
-        if (categoriesCount) {
-            categoriesCount.textContent = this.categoriesData.length;
+        if (campaignsCount) {
+            campaignsCount.textContent = this.campaignsData.length;
         }
     }
 
     showRegistrationRequired() {
-        this.isRegistered = false;
         this.showSection('registration-required');
-        
-        // Add additional message for popup access restriction
-        const registrationSection = document.getElementById('registration-required');
-        if (registrationSection) {
-            const existingMessage = registrationSection.querySelector('.access-restriction-message');
-            if (!existingMessage) {
-                const restrictionMessage = document.createElement('div');
-                restrictionMessage.className = 'access-restriction-message';
-                restrictionMessage.innerHTML = `
-                    <div class="restriction-notice">
-                        <strong>🔒 Access Restricted</strong>
-                        <p>This extension requires authentication. Please complete registration to access features.</p>
-                    </div>
-                `;
-                
-                // Insert after the welcome message
-                const welcomeText = registrationSection.querySelector('p');
-                if (welcomeText) {
-                    welcomeText.after(restrictionMessage);
-                }
-            }
-        }
     }
 
     async handleRegistration() {
@@ -353,82 +392,42 @@ class EchoExtensionPopup {
         }
     }
 
-    // REMOVED: openDashboard function
-    // REMOVED: handleLogout function
-
-    async refreshData() {
-        console.log('Refreshing categories...');
-        try {
-            await this.loadCategories();
-            console.log('Categories refreshed successfully');
-        } catch (error) {
-            console.error('Failed to refresh categories:', error);
-            this.showError('Failed to refresh categories');
-        }
-    }
-
     async getCurrentPageInfo() {
         try {
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            
             if (tab) {
-                document.getElementById('current-url').textContent = tab.url || 'Unknown';
-                document.getElementById('current-title').textContent = tab.title || 'Unknown';
+                console.log('Current page:', tab.url);
                 
-                // Detect social media platforms
-                this.detectSocialPlatforms(tab.url);
+                // Update page analysis section if it exists
+                const currentUrl = document.getElementById('current-url');
+                const detectedPlatform = document.getElementById('detected-platform');
                 
-                // Show page analysis section
-                this.showPageAnalysis();
+                if (currentUrl) {
+                    currentUrl.textContent = tab.url;
+                }
+                
+                if (detectedPlatform) {
+                    // Simple platform detection
+                    let platform = 'Unknown';
+                    if (tab.url.includes('instagram.com')) platform = 'Instagram';
+                    else if (tab.url.includes('tiktok.com')) platform = 'TikTok';
+                    else if (tab.url.includes('youtube.com')) platform = 'YouTube';
+                    else if (tab.url.includes('twitter.com') || tab.url.includes('x.com')) platform = 'Twitter/X';
+                    
+                    detectedPlatform.textContent = platform;
+                }
             }
         } catch (error) {
             console.error('Failed to get current page info:', error);
         }
     }
 
-    detectSocialPlatforms(url) {
-        const socialPlatforms = [
-            { name: 'Instagram', pattern: /instagram\.com/i },
-            { name: 'Twitter/X', pattern: /(twitter\.com|x\.com)/i },
-            { name: 'LinkedIn', pattern: /linkedin\.com/i },
-            { name: 'TikTok', pattern: /tiktok\.com/i },
-            { name: 'YouTube', pattern: /youtube\.com/i },
-            { name: 'Facebook', pattern: /facebook\.com/i }
-        ];
-
-        const detected = socialPlatforms.filter(platform => platform.pattern.test(url));
-        
-        const socialDetection = document.getElementById('social-detection');
-        if (socialDetection) {
-            if (detected.length > 0) {
-                socialDetection.innerHTML = `
-                    <strong>Detected Platforms:</strong><br>
-                    ${detected.map(p => `<span class="social-platform">${p.name}</span>`).join('')}
-                `;
-            } else {
-                socialDetection.innerHTML = '<span style="color: #666;">No social media platforms detected</span>';
-            }
-        }
-    }
-
-    showPageAnalysis() {
-        const pageAnalysis = document.getElementById('page-analysis');
-        if (pageAnalysis) {
-            pageAnalysis.classList.remove('hidden');
-        }
-    }
-
     showSection(sectionId) {
         // Hide all sections
-        const sections = ['loading', 'registration-required', 'dashboard', 'error-state'];
-        sections.forEach(id => {
-            const element = document.getElementById(id);
-            if (element) {
-                element.classList.add('hidden');
-            }
-        });
-
-        // Show requested section
+        const sections = document.querySelectorAll('.section');
+        sections.forEach(section => section.classList.add('hidden'));
+        
+        // Show the requested section
         const targetSection = document.getElementById(sectionId);
         if (targetSection) {
             targetSection.classList.remove('hidden');
@@ -436,152 +435,11 @@ class EchoExtensionPopup {
     }
 
     showError(message) {
+        this.showSection('error-state');
         const errorMessage = document.getElementById('error-message');
         if (errorMessage) {
             errorMessage.textContent = message;
         }
-        this.showSection('error-state');
-    }
-
-    updateUserInfo() {
-        const userEmail = document.getElementById('user-email');
-        const userFullName = document.getElementById('user-full-name'); // This element exists in the HTML
-        const userDetails = this.userData?.userDetails;
-        
-        // Update the user full name display
-        if (userFullName) {
-            if (userDetails) {
-                const displayName = userDetails.full_name || 
-                                  userDetails.name || 
-                                  userDetails.user?.full_name || 
-                                  userDetails.user?.name || 
-                                  this.userData.userEmail || 
-                                  'User';
-                
-                userFullName.textContent = displayName;
-            } else {
-                userFullName.textContent = this.userData.userEmail || 'User';
-            }
-        }
-
-        // If user email element exists, update it too
-        if (userEmail) {
-            if (userDetails) {
-                // Display user details from API
-                const displayName = userDetails.full_name || 
-                                  userDetails.name || 
-                                  userDetails.user?.full_name || 
-                                  userDetails.user?.name || 
-                                  this.userData.userEmail || 
-                                  'User';
-                
-                const email = userDetails.email || 
-                            userDetails.user?.email || 
-                            this.userData.userEmail || 
-                            'No email';
-
-                // Create detailed user info display
-                userEmail.innerHTML = `
-                    <div class="user-details">
-                        <div class="user-name">${displayName}</div>
-                        <div class="user-email-text">${email}</div>
-                        ${userDetails.user_type ? `<div class="user-type">Type: ${userDetails.user_type}</div>` : ''}
-                        ${userDetails.status ? `<div class="user-status status-${userDetails.status.toLowerCase()}">${userDetails.status}</div>` : ''}
-                    </div>
-                `;
-            } else {
-                // Fallback to basic email display
-                userEmail.textContent = this.userData.userEmail || 'User';
-            }
-        }
-
-        // Update other user-related elements
-        this.updateUserStats();
-    }
-
-    updateUserStats() {
-        const userDetails = this.userData?.userDetails;
-        if (!userDetails) return;
-
-        // Update active campaigns if user has campaign-related data
-        const activeCampaigns = document.getElementById('active-campaigns');
-        if (activeCampaigns && userDetails.active_campaigns) {
-            activeCampaigns.textContent = userDetails.active_campaigns;
-        }
-
-        // Add any other user-specific stats here
-        if (userDetails.total_campaigns) {
-            const totalCampaigns = document.getElementById('total-campaigns');
-            if (totalCampaigns) {
-                totalCampaigns.textContent = userDetails.total_campaigns;
-            }
-        }
-    }
-
-    // Storage helpers
-    async getStoredData() {
-        return new Promise((resolve) => {
-            chrome.storage.local.get(['accessToken', 'userEmail', 'userDetails', 'registrationComplete'], (result) => {
-                resolve(result);
-            });
-        });
-    }
-
-    async saveToStorage(data) {
-        return new Promise((resolve) => {
-            // Always mark registration as complete when saving auth data
-            if (data.accessToken) {
-                data.registrationComplete = true;
-            }
-            
-            chrome.storage.local.set(data, () => {
-                console.log('Data saved to storage:', data);
-                resolve();
-            });
-        });
-    }
-
-    async clearAllStorage() {
-        // Clear extension storage
-        await this.clearStoredData();
-        
-        // Also try to clear localStorage from frontend tabs
-        try {
-            const tabs = await chrome.tabs.query({ url: '*://localhost:3000/*' });
-            
-            for (const tab of tabs) {
-                try {
-                    await chrome.scripting.executeScript({
-                        target: { tabId: tab.id },
-                        func: () => {
-                            // Clear common JWT storage keys
-                            localStorage.removeItem('accessToken');
-                            localStorage.removeItem('authToken');
-                            localStorage.removeItem('token');
-                            localStorage.removeItem('jwt');
-                            localStorage.removeItem('access_token');
-                            localStorage.removeItem('userEmail');
-                            localStorage.removeItem('email');
-                            localStorage.removeItem('user_email');
-                            console.log('Extension: Cleared localStorage tokens');
-                        }
-                    });
-                } catch (error) {
-                    console.log('Could not clear localStorage for tab:', tab.id);
-                }
-            }
-        } catch (error) {
-            console.log('Could not access frontend tabs for cleanup:', error);
-        }
-    }
-
-    async clearStoredData() {
-        return new Promise((resolve) => {
-            chrome.storage.local.clear(() => {
-                console.log('Extension storage cleared');
-                resolve();
-            });
-        });
     }
 }
 

@@ -1,4 +1,6 @@
-// Background service worker for Echo Outreach Agent Extension
+// File: background.js
+// Background service worker for Echo Outreach Agent Extension - Simplified Version
+
 class EchoExtensionBackground {
     constructor() {
         this.apiBaseUrl = 'http://localhost:8000/api/v0';
@@ -29,80 +31,21 @@ class EchoExtensionBackground {
             this.updateBadge();
         });
 
-        // Message handling - Single listener for all messages
+        // Message handling
         chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-            // Handle JWT detection messages
-            if (message.type === 'AUTH_DATA_DETECTED') {
-                this.handleJWTDetection(message.data);
-                sendResponse({ success: true });
-                return true;
-            }
-            
-            // Handle other messages
             this.handleMessage(message, sender, sendResponse);
             return true; // Keep message channel open for async response
         });
 
-        // Tab updates - monitor for registration completion and JWT tokens
+        // Tab updates - monitor for user login/registration
         chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
             this.handleTabUpdate(tabId, changeInfo, tab);
         });
-
-        // Web request handling for API calls
-        this.setupApiInterceptors();
     }
 
-    // ADD THE MISSING handleJWTDetection FUNCTION
-    async handleJWTDetection(data) {
-        try {
-            console.log('JWT token detected:', { 
-                hasToken: !!data.token, 
-                email: data.email, 
-                source: data.source 
-            });
-
-            if (data.token) {
-                // Save the auth data
-                await this.saveAuthData({
-                    accessToken: data.token,
-                    userEmail: data.email,
-                    registrationComplete: true,
-                    source: data.source
-                });
-
-                // Fetch and store user details
-                if (data.token) {
-                    await this.fetchAndStoreUserDetails(data.token);
-                }
-
-                // Update badge to show authenticated state
-                this.updateBadge('✓');
-
-                // Notify popup if it's open
-                chrome.runtime.sendMessage({ 
-                    type: 'USER_REGISTERED',
-                    data: { token: data.token, email: data.email }
-                }).catch(() => {
-                    // Popup might not be open, that's okay
-                    console.log('Popup not available to notify');
-                });
-
-                console.log('JWT detection handled successfully');
-            }
-        } catch (error) {
-            console.error('Error handling JWT detection:', error);
-        }
-    }
-
-    handleInstallation(details) {
-        console.log('Extension installed:', details);
-        
+    async handleInstallation(details) {
         if (details.reason === 'install') {
-            // First time installation
-            this.showWelcomeNotification();
-            
-            // Clear any existing data
-            chrome.storage.local.clear();
+            console.log('Extension installed');
             
             // Open registration page
             chrome.tabs.create({
@@ -111,7 +54,6 @@ class EchoExtensionBackground {
             });
         } else if (details.reason === 'update') {
             console.log('Extension updated from version:', details.previousVersion);
-            // Handle updates if needed
         }
     }
 
@@ -120,141 +62,58 @@ class EchoExtensionBackground {
 
         try {
             switch (message.type) {
-                case 'CHECK_AUTH':
-                    const authStatus = await this.checkAuthStatus();
-                    sendResponse({ success: true, data: authStatus });
+                case 'FETCH_CAMPAIGNS':
+                    const campaigns = await this.fetchCampaigns(message.token);
+                    sendResponse({ success: true, data: campaigns });
                     break;
 
-                case 'SAVE_AUTH_DATA':
-                    await this.saveAuthData(message.data);
-                    sendResponse({ success: true });
-                    break;
-
-                case 'FETCH_CATEGORIES':
-                    const categories = await this.fetchCategories();
-                    sendResponse({ success: true, data: categories });
-                    break;
-
-                case 'FETCH_USER_DETAILS':
-                    const userDetails = await this.fetchUserDetails(message.token);
-                    sendResponse({ success: true, data: userDetails });
+                case 'GET_USER_DATA':
+                    const userData = await this.getUserDataFromStorage();
+                    sendResponse({ success: true, data: userData });
                     break;
 
                 case 'UPDATE_BADGE':
-                    await this.updateBadge(message.count);
+                    await this.updateBadge(message.text);
                     sendResponse({ success: true });
                     break;
 
-                case 'LOGOUT':
-                    await this.handleLogout();
+                case 'OPEN_DASHBOARD':
+                    chrome.tabs.create({ url: this.frontendUrl });
+                    sendResponse({ success: true });
+                    break;
+
+                case 'PROFILE_DETECTED':
+                    console.log('Profile detected:', message.data);
                     sendResponse({ success: true });
                     break;
 
                 default:
-                    console.log('Unknown message type:', message.type);
                     sendResponse({ success: false, error: 'Unknown message type' });
             }
         } catch (error) {
-            console.error('Error handling message:', error);
+            console.error('Message handling error:', error);
             sendResponse({ success: false, error: error.message });
         }
     }
 
-    handleTabUpdate(tabId, changeInfo, tab) {
-        // Monitor for registration completion and JWT token presence
+    async handleTabUpdate(tabId, changeInfo, tab) {
         if (changeInfo.status === 'complete' && tab.url) {
-            if (tab.url.includes(`${this.frontendUrl}/dashboard`) || 
-                tab.url.includes(`${this.frontendUrl}/campaigns`) ||
-                tab.url.includes(`${this.frontendUrl}/profile`)) {
-                
-                // User might have completed registration, check for JWT in URL or page
-                this.checkRegistrationCompletion(tab.url);
-                
-                // Also inject script to check localStorage for JWT
-                this.checkLocalStorageJWT(tabId);
-            }
-        }
-    }
-
-    async checkLocalStorageJWT(tabId) {
-        try {
-            const result = await chrome.scripting.executeScript({
-                target: { tabId: tabId },
-                func: () => {
-                    const jwtKeys = ['accessToken', 'authToken', 'token', 'jwt', 'access_token'];
-                    const emailKeys = ['userEmail', 'email', 'user_email'];
-                    
-                    let foundToken = null;
-                    let foundEmail = null;
-                    
-                    for (const key of jwtKeys) {
-                        const token = localStorage.getItem(key);
-                        if (token) {
-                            foundToken = token;
-                            break;
-                        }
-                    }
-                    
-                    for (const key of emailKeys) {
-                        const email = localStorage.getItem(key);
-                        if (email) {
-                            foundEmail = email;
-                            break;
-                        }
-                    }
-                    
-                    return { token: foundToken, email: foundEmail };
-                }
-            });
-
-            const authData = result[0]?.result;
-            if (authData?.token) {
-                console.log('JWT found in localStorage during tab update');
-                await this.handleJWTDetection({
-                    ...authData,
-                    source: 'tab_update_check'
-                });
-            }
-        } catch (error) {
-            console.log('Could not check localStorage for JWT:', error);
-        }
-    }
-
-    async checkRegistrationCompletion(url) {
-        try {
-            // Extract any auth tokens from URL params if present
-            const urlParams = new URLSearchParams(url.split('?')[1]);
-            const token = urlParams.get('token');
-            const email = urlParams.get('email');
-
-            if (token && email) {
-                // Save auth data with registration complete flag
-                await this.saveAuthData({ 
-                    accessToken: token, 
-                    userEmail: email,
-                    registrationComplete: true 
-                });
-                
-                // Fetch and store user details immediately
-                await this.fetchAndStoreUserDetails(token);
-                
-                // Notify popup to refresh
-                chrome.runtime.sendMessage({ type: 'USER_REGISTERED' });
-                
-                // Update badge
+            // Monitor for user reaching dashboard (indicates successful login)
+            if (tab.url.includes(this.frontendUrl) && tab.url.includes('/dashboard')) {
+                console.log('User reached dashboard - updating badge');
                 this.updateBadge('✓');
-                
-                this.showSuccessNotification();
             }
-        } catch (error) {
-            console.error('Error checking registration completion:', error);
         }
     }
 
-    async fetchAndStoreUserDetails(token) {
+    async fetchCampaigns(token) {
         try {
-            // Use auth/me to get ONLY logged-in user details
-            const response = await fetch(`${this.apiBaseUrl}/auth/me`, {
+            if (!token) {
+                throw new Error('No JWT token provided');
+            }
+
+            // Use exact API endpoint as specified
+            const response = await fetch('http://localhost:8000/api/v0/campaigns', {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -262,114 +121,95 @@ class EchoExtensionBackground {
                 }
             });
 
-            if (response.ok) {
-                const userData = await response.json();
-                console.log('Logged-in user details fetched in background:', userData);
-                
-                // Store user details
-                await chrome.storage.local.set({ 
-                    userDetails: userData,
-                    userEmail: userData.email || (await this.getStoredData()).userEmail
-                });
-            }
-        } catch (error) {
-            console.error('Failed to fetch user details in background:', error);
-        }
-    }
-
-    async checkAuthStatus() {
-        try {
-            const stored = await this.getStoredData();
-            
-            if (stored.accessToken) {
-                // Validate token with backend
-                const response = await fetch(`${this.apiBaseUrl}/auth/me`, {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${stored.accessToken}`,
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                if (response.ok) {
-                    const userData = await response.json();
-                    return { isAuthenticated: true, user: userData };
-                } else {
-                    // Token invalid, clear storage
-                    await chrome.storage.local.clear();
-                    return { isAuthenticated: false };
-                }
-            }
-
-            return { isAuthenticated: false };
-        } catch (error) {
-            console.error('Auth check failed:', error);
-            return { isAuthenticated: false, error: error.message };
-        }
-    }
-
-    async fetchCategories() {
-        try {
-            const stored = await this.getStoredData();
-            const headers = { 'Content-Type': 'application/json' };
-            
-            if (stored.accessToken) {
-                headers['Authorization'] = `Bearer ${stored.accessToken}`;
-            }
-
-            const response = await fetch(`${this.apiBaseUrl}/categories/`, {
-                method: 'GET',
-                headers: headers
-            });
+            console.log('Background: Campaigns API response status:', response.status);
 
             if (response.ok) {
                 const data = await response.json();
-                return Array.isArray(data) ? data : data.items || [];
+                console.log('Background: Campaigns API response:', data);
+                
+                // Handle different possible response structures
+                return data.campaigns || data.data?.campaigns || data.data || [];
             } else {
+                const errorText = await response.text();
+                console.error('Background: Campaigns API error:', response.status, errorText);
                 throw new Error(`API responded with status: ${response.status}`);
             }
         } catch (error) {
-            console.error('Failed to fetch categories:', error);
+            console.error('Background: Failed to fetch campaigns:', error);
             throw error;
         }
     }
 
-    async saveAuthData(authData) {
+    async getUserDataFromStorage() {
         try {
-            await chrome.storage.local.set(authData);
-            console.log('Auth data saved:', authData);
+            // Get current active tab
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
             
-            // Update badge to show authenticated state
-            this.updateBadge('✓');
+            if (tab && tab.url && tab.url.startsWith(this.frontendUrl)) {
+                const results = await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    function: () => {
+                        // Get user data from localStorage - stored with key 'user' in array format
+                        let userData = null;
+                        try {
+                            // Use 'user' as the primary key (as specified)
+                            const userDataStr = localStorage.getItem('user');
+                            if (userDataStr) {
+                                const parsed = JSON.parse(userDataStr);
+                                
+                                // Data is in array format, take the first element
+                                if (Array.isArray(parsed) && parsed.length > 0) {
+                                    userData = parsed[0];
+                                    console.log('Background: Found user data as array with key "user"');
+                                } 
+                                // If it's an object, use it directly
+                                else if (parsed && typeof parsed === 'object') {
+                                    userData = parsed;
+                                    console.log('Background: Found user data as object with key "user"');
+                                }
+                            }
+                            
+                            // Fallback to other possible keys if 'user' key doesn't exist
+                            if (!userData) {
+                                const fallbackKeys = ['userData', 'loggedInUser', 'currentUser'];
+                                
+                                for (const key of fallbackKeys) {
+                                    const userDataStr = localStorage.getItem(key);
+                                    if (userDataStr) {
+                                        const parsed = JSON.parse(userDataStr);
+                                        
+                                        if (Array.isArray(parsed) && parsed.length > 0) {
+                                            userData = parsed[0];
+                                            console.log(`Background: Found user data with fallback key "${key}"`);
+                                            break;
+                                        } 
+                                        else if (parsed && typeof parsed === 'object') {
+                                            userData = parsed;
+                                            console.log(`Background: Found user data with fallback key "${key}"`);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            console.log('Background: Could not parse user data:', e);
+                        }
+                        
+                        return userData;
+                    }
+                });
+                
+                return results && results[0] && results[0].result;
+            }
         } catch (error) {
-            console.error('Failed to save auth data:', error);
-            throw error;
+            console.error('Failed to get user data from storage:', error);
         }
-    }
-
-    async handleLogout() {
-        try {
-            // Clear storage
-            await chrome.storage.local.clear();
-            
-            // Update badge
-            this.updateBadge('');
-            
-            console.log('User logged out');
-        } catch (error) {
-            console.error('Logout failed:', error);
-            throw error;
-        }
+        
+        return null;
     }
 
     async updateBadge(text = '') {
         try {
-            if (text === '') {
-                // Check if user is authenticated
-                const stored = await this.getStoredData();
-                text = stored.accessToken ? '✓' : '';
-            }
-
             await chrome.action.setBadgeText({ text: text });
             await chrome.action.setBadgeBackgroundColor({ color: '#667eea' });
         } catch (error) {
@@ -377,88 +217,17 @@ class EchoExtensionBackground {
         }
     }
 
-    setupApiInterceptors() {
-        // Monitor network requests to detect API calls
-        if (chrome.webRequest) {
-            chrome.webRequest.onCompleted.addListener(
-                (details) => {
-                    if (details.url.includes(this.apiBaseUrl)) {
-                        console.log('API call completed:', details.url, details.statusCode);
-                    }
-                },
-                { urls: [`${this.apiBaseUrl}/*`] }
-            );
-        }
-    }
-
     showWelcomeNotification() {
         if (chrome.notifications) {
             chrome.notifications.create('welcome', {
                 type: 'basic',
-                iconUrl: 'icons/icon48.png',
+                iconUrl: 'icons/echooo-favicon-white-48x48.png',
                 title: 'Echo Outreach Agent',
                 message: 'Extension installed successfully! Please register to get started.'
             });
         }
     }
-
-    showSuccessNotification() {
-        if (chrome.notifications) {
-            chrome.notifications.create('success', {
-                type: 'basic',
-                iconUrl: 'icons/icon48.png',
-                title: 'Registration Complete',
-                message: 'You can now use the Echo Outreach Agent extension!'
-            });
-        }
-    }
-
-    async fetchUserDetails(token) {
-        try {
-            // Use auth/me to get ONLY logged-in user details
-            const response = await fetch(`${this.apiBaseUrl}/auth/me`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (response.ok) {
-                const userData = await response.json();
-                return userData;
-            } else {
-                throw new Error(`API responded with status: ${response.status}`);
-            }
-        } catch (error) {
-            console.error('Failed to fetch user details:', error);
-            throw error;
-        }
-    }
-
-    // Storage helpers
-    async getStoredData() {
-        return new Promise((resolve) => {
-            chrome.storage.local.get(['accessToken', 'userEmail', 'userDetails', 'registrationComplete'], (result) => {
-                resolve(result);
-            });
-        });
-    }
 }
 
 // Initialize background service worker
 new EchoExtensionBackground();
-
-// Simple periodic check - only for keeping auth status updated
-setInterval(async () => {
-    try {
-        const background = new EchoExtensionBackground();
-        const authStatus = await background.checkAuthStatus();
-        
-        if (authStatus.isAuthenticated) {
-            console.log('User still authenticated - periodic check');
-        }
-    } catch (error) {
-        console.error('Periodic auth check failed:', error);
-    }
-}, 10 * 60 * 1000); // Every 10 minutes - just auth check
