@@ -1,5 +1,5 @@
 // File: content.js
-// Content script for Echo Outreach Agent Extension - Complete Profile Detection & Icon Injection
+// Content script for Echo Outreach Agent Extension - Unified Popup Version
 
 class EchoContentScript {
     constructor() {
@@ -647,29 +647,192 @@ class EchoContentScript {
                 }
             });
 
-            // Show inline analysis
-            this.showInlineAnalysis();
+            // Show the UNIFIED popup (same as browser extension icon)
+            this.showUniversalPopup();
         } catch (error) {
             console.error('Error handling icon click:', error);
         }
     }
 
-    showInlineAnalysis() {
+    // UNIFIED POPUP METHOD - Used by both profile icon and browser extension icon
+    async showUniversalPopup() {
         try {
             // Remove existing popup
-            const existingPopup = document.getElementById('echo-analysis-popup');
+            const existingPopup = document.getElementById('echo-universal-popup');
             if (existingPopup) {
                 existingPopup.remove();
             }
 
-            // Get user information for header
-            const userName = this.profileData?.profileName || this.profileData?.channelName || this.profileData?.username || 'Unknown User';
-            const userHandle = this.profileData?.username ? `@${this.profileData.username}` : '';
+            // Get user data from localStorage using your original project's approach
+            let userData = null;
+            let companyData = null;
+            let campaigns = [];
+            
+            try {
+                // Get JWT token from localStorage (your original project's approach)
+                const token = localStorage.getItem('accessToken') || 
+                             localStorage.getItem('authToken') || 
+                             localStorage.getItem('token') ||
+                             localStorage.getItem('jwt');
+                
+                // Get user data - stored with key 'user' (as per your original project)
+                const userStr = localStorage.getItem('user');
+                if (userStr) {
+                    const parsed = JSON.parse(userStr);
+                    // Data is in array format, take the first element (your original approach)
+                    userData = Array.isArray(parsed) ? parsed[0] : parsed;
+                }
+                
+                // Get company data - stored with key 'company' (as per your original project)
+                const companyStr = localStorage.getItem('company');
+                if (companyStr) {
+                    const parsed = JSON.parse(companyStr);
+                    // If it's an array, take the first element (your original approach)
+                    companyData = Array.isArray(parsed) ? parsed[0] : parsed;
+                }
 
-            // Create slide-in popup similar to the example
-            const analysisPopup = document.createElement('div');
-            analysisPopup.id = 'echo-analysis-popup';
-            analysisPopup.innerHTML = `
+                console.log('🔑 Content: Token found:', !!token);
+                console.log('👤 Content: User data found:', !!userData);
+                console.log('🏢 Content: Company data found:', !!companyData);
+                
+                // Fetch campaigns if we have token and company data
+                if (token && companyData) {
+                    const companyId = companyData.id || companyData.company_id;
+                    console.log('🆔 Content: Company ID extracted:', companyId);
+                    
+                    try {
+                        console.log('📡 Content: Fetching campaigns...');
+                        const response = await fetch(`http://localhost:8000/api/v0/campaigns/company/${companyId}`, {
+                            method: 'GET',
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json'
+                            }
+                        });
+
+                        if (response.ok) {
+                            const data = await response.json();
+                            
+                            // DETAILED CONSOLE LOGGING FOR DEBUGGING
+                            console.log('🔍 Content: ==== CAMPAIGN DATA DEBUG ====');
+                            console.log('📦 Content: Full API Response:', data);
+                            console.log('📦 Content: Response Type:', typeof data);
+                            console.log('📦 Content: Response Keys:', Object.keys(data));
+                            
+                            if (data.campaigns) {
+                                console.log('📋 Content: Found data.campaigns:', data.campaigns);
+                                console.log('📋 Content: data.campaigns type:', typeof data.campaigns);
+                                console.log('📋 Content: data.campaigns is array:', Array.isArray(data.campaigns));
+                                console.log('📋 Content: data.campaigns length:', data.campaigns.length);
+                                
+                                if (Array.isArray(data.campaigns) && data.campaigns.length > 0) {
+                                    console.log('📋 Content: First campaign sample:', data.campaigns[0]);
+                                }
+                            }
+                            
+                            if (data.data) {
+                                console.log('📋 Content: Found data.data:', data.data);
+                                console.log('📋 Content: data.data type:', typeof data.data);
+                                console.log('📋 Content: data.data is array:', Array.isArray(data.data));
+                                
+                                if (Array.isArray(data.data) && data.data.length > 0) {
+                                    console.log('📋 Content: data.data length:', data.data.length);
+                                    console.log('📋 Content: First data.data item:', data.data[0]);
+                                    
+                                    // Check if data.data contains nested arrays
+                                    if (Array.isArray(data.data[0])) {
+                                        console.log('📋 Content: NESTED ARRAY DETECTED in data.data[0]');
+                                        console.log('📋 Content: data.data[0] length:', data.data[0].length);
+                                        console.log('📋 Content: First nested campaign:', data.data[0][0]);
+                                    }
+                                }
+                                
+                                if (data.data.campaigns) {
+                                    console.log('📋 Content: Found data.data.campaigns:', data.data.campaigns);
+                                    console.log('📋 Content: data.data.campaigns type:', typeof data.data.campaigns);
+                                    console.log('📋 Content: data.data.campaigns is array:', Array.isArray(data.data.campaigns));
+                                    
+                                    if (Array.isArray(data.data.campaigns) && data.data.campaigns.length > 0) {
+                                        console.log('📋 Content: data.data.campaigns length:', data.data.campaigns.length);
+                                        console.log('📋 Content: First data.data.campaigns item:', data.data.campaigns[0]);
+                                    }
+                                }
+                            }
+                            
+                            console.log('🔍 Content: ==== END CAMPAIGN DATA DEBUG ====');
+                            
+                            // Handle different possible response structures
+                            if (data.campaigns && Array.isArray(data.campaigns)) {
+                                campaigns = data.campaigns;
+                                console.log('✅ Content: Using data.campaigns array');
+                            }
+                            // Check for data.campaigns
+                            else if (data.data?.campaigns && Array.isArray(data.data.campaigns)) {
+                                campaigns = data.data.campaigns;
+                                console.log('✅ Content: Using data.data.campaigns array');
+                            }
+                            // Check for direct data array
+                            else if (data.data && Array.isArray(data.data)) {
+                                // Handle nested array case
+                                if (data.data.length > 0 && Array.isArray(data.data[0])) {
+                                    campaigns = data.data[0]; // Extract from nested array
+                                    console.log('✅ Content: Using nested array data.data[0]');
+                                } else {
+                                    campaigns = data.data;
+                                    console.log('✅ Content: Using data.data array');
+                                }
+                            }
+                            // Last fallback
+                            else if (Array.isArray(data)) {
+                                campaigns = data;
+                                console.log('✅ Content: Using direct data array');
+                            }
+                            
+                            console.log(`📈 Content: Final campaigns array:`, campaigns);
+                            console.log(`📈 Content: Final campaigns count: ${campaigns.length}`);
+                            
+                            if (campaigns.length > 0) {
+                                console.log('📋 Content: Sample campaign structure:', campaigns[0]);
+                                campaigns.forEach((campaign, index) => {
+                                    console.log(`📋 Content: Campaign ${index + 1}:`, {
+                                        id: campaign.id,
+                                        name: campaign.name,
+                                        status: campaign.status
+                                    });
+                                });
+                            }
+                        } else {
+                            console.error('❌ Content: Failed to fetch campaigns:', response.status);
+                        }
+                    } catch (error) {
+                        console.error('❌ Content: Error fetching campaigns:', error);
+                    }
+                }
+            } catch (e) {
+                console.log('Content: Could not parse data from localStorage:', e);
+            }
+
+            // Determine popup content based on context
+            let userName, userHandle, platformBadge, isProfileContext;
+            
+            if (this.profileData) {
+                // Profile icon was clicked - show profile info
+                userName = this.profileData.profileName || this.profileData.channelName || this.profileData.username || 'Unknown User';
+                userHandle = this.profileData.username ? `@${this.profileData.username}` : '';
+                platformBadge = this.profileData.platform || 'Unknown';
+                isProfileContext = true;
+            } else {
+                // Browser action was clicked - show user/dashboard info (your original project's user data)
+                userName = userData?.full_name || userData?.name || userData?.email || 'Echo User';
+                userHandle = userData?.email ? `@${userData.email.split('@')[0]}` : '';
+                platformBadge = 'Dashboard';
+                isProfileContext = false;
+            }
+
+            // Create slide-in popup - SAME DESIGN for both contexts
+            const universalPopup = document.createElement('div');
+            universalPopup.id = 'echo-universal-popup';
+            universalPopup.innerHTML = `
                 <div class="echo-slide-popup">
                     <!-- Header with user info and close button -->
                     <div class="echo-popup-header">
@@ -678,11 +841,28 @@ class EchoContentScript {
                                 <div class="echo-avatar-placeholder">
                                     ${userName.charAt(0).toUpperCase()}
                                 </div>
+
+                        ${!isProfileContext && campaigns.length > 0 ? `
+                            <!-- Campaigns Dropdown Section -->
+                            <div class="echo-campaigns-section">
+                                <h4>📊 Select Campaign</h4>
+                                <div class="echo-dropdown-container">
+                                    <select class="echo-campaigns-dropdown" id="campaignsDropdown">
+                                        <option value="">Select a campaign...</option>
+                                        ${campaigns.map(campaign => `
+                                            <option value="${campaign.id}" data-name="${campaign.name}">
+                                                ${campaign.name} (${campaign.status || 'Active'})
+                                            </option>
+                                        `).join('')}
+                                    </select>
+                                </div>
+                            </div>
+                        ` : ''}
                             </div>
                             <div class="echo-user-details">
                                 <h3 class="echo-user-name">${userName}</h3>
                                 <p class="echo-user-handle">${userHandle}</p>
-                                <span class="echo-platform-badge">${this.currentPlatform}</span>
+                                <span class="echo-platform-badge">${platformBadge}</span>
                             </div>
                         </div>
                         <button class="echo-close-btn">×</button>
@@ -692,60 +872,97 @@ class EchoContentScript {
                     <div class="echo-popup-content">
                         <!-- Stats section -->
                         <div class="echo-stats-section">
-                            <div class="echo-stat-item">
-                                <span class="echo-stat-label">Platform</span>
-                                <span class="echo-stat-value">${this.currentPlatform.charAt(0).toUpperCase() + this.currentPlatform.slice(1)}</span>
-                            </div>
-                            ${this.profileData?.followerCount ? `
+                            ${isProfileContext ? `
                                 <div class="echo-stat-item">
-                                    <span class="echo-stat-label">Followers</span>
-                                    <span class="echo-stat-value">${this.profileData.followerCount}</span>
+                                    <span class="echo-stat-label">Platform</span>
+                                    <span class="echo-stat-value">${this.profileData.platform.charAt(0).toUpperCase() + this.profileData.platform.slice(1)}</span>
                                 </div>
-                            ` : ''}
-                            ${this.profileData?.subscriberCount ? `
+                                ${this.profileData.followerCount ? `
+                                    <div class="echo-stat-item">
+                                        <span class="echo-stat-label">Followers</span>
+                                        <span class="echo-stat-value">${this.profileData.followerCount}</span>
+                                    </div>
+                                ` : ''}
+                                ${this.profileData.subscriberCount ? `
+                                    <div class="echo-stat-item">
+                                        <span class="echo-stat-label">Subscribers</span>
+                                        <span class="echo-stat-value">${this.profileData.subscriberCount}</span>
+                                    </div>
+                                ` : ''}
+                            ` : `
                                 <div class="echo-stat-item">
-                                    <span class="echo-stat-label">Subscribers</span>
-                                    <span class="echo-stat-value">${this.profileData.subscriberCount}</span>
+                                    <span class="echo-stat-label">Status</span>
+                                    <span class="echo-stat-value">Active</span>
                                 </div>
-                            ` : ''}
+                                <div class="echo-stat-item">
+                                    <span class="echo-stat-label">Company</span>
+                                    <span class="echo-stat-value">${companyData?.name || companyData?.company_name || 'Company'}</span>
+                                </div>
+                                <div class="echo-stat-item">
+                                    <span class="echo-stat-label">Campaigns</span>
+                                    <span class="echo-stat-value">${campaigns.length}</span>
+                                </div>
+                            `}
                         </div>
 
                         <!-- Analysis section -->
                         <div class="echo-analysis-section">
-                            <h4>🔍 Quick Analysis</h4>
+                            <h4>${isProfileContext ? '🔍 Quick Analysis' : '🚀 Quick Actions'}</h4>
                             <div class="echo-analysis-items">
-                                <div class="echo-analysis-item">
-                                    <span class="echo-analysis-icon">📊</span>
-                                    <span>Profile detected and extracted</span>
-                                </div>
-                                <div class="echo-analysis-item">
-                                    <span class="echo-analysis-icon">✅</span>
-                                    <span>Ready for campaign analysis</span>
-                                </div>
-                                <div class="echo-analysis-item">
-                                    <span class="echo-analysis-icon">🎯</span>
-                                    <span>Engagement data available</span>
-                                </div>
+                                ${isProfileContext ? `
+                                    <div class="echo-analysis-item">
+                                        <span class="echo-analysis-icon">📊</span>
+                                        <span>Profile detected and extracted</span>
+                                    </div>
+                                    <div class="echo-analysis-item">
+                                        <span class="echo-analysis-icon">✅</span>
+                                        <span>Ready for campaign analysis</span>
+                                    </div>
+                                    <div class="echo-analysis-item">
+                                        <span class="echo-analysis-icon">🎯</span>
+                                        <span>Engagement data available</span>
+                                    </div>
+                                ` : `
+                                    <div class="echo-analysis-item">
+                                        <span class="echo-analysis-icon">📊</span>
+                                        <span>View company campaigns</span>
+                                    </div>
+                                    <div class="echo-analysis-item">
+                                        <span class="echo-analysis-icon">🎯</span>
+                                        <span>Manage influencer outreach</span>
+                                    </div>
+                                    <div class="echo-analysis-item">
+                                        <span class="echo-analysis-icon">📈</span>
+                                        <span>Track campaign performance</span>
+                                    </div>
+                                `}
                             </div>
                         </div>
 
                         <!-- Action buttons -->
                         <div class="echo-actions-section">
-                            <button class="echo-btn echo-btn-primary echo-analyze">
-                                <span class="echo-btn-icon">🔍</span>
-                                Full Analysis
-                            </button>
-                            <button class="echo-btn echo-btn-secondary echo-save">
-                                <span class="echo-btn-icon">💾</span>
-                                Add to Campaign
-                            </button>
+                            ${isProfileContext ? `
+                                <button class="echo-btn echo-btn-primary echo-analyze">
+                                    <span class="echo-btn-icon">🔍</span>
+                                    Full Analysis
+                                </button>
+                                <button class="echo-btn echo-btn-secondary echo-save">
+                                    <span class="echo-btn-icon">💾</span>
+                                    Add to Campaign
+                                </button>
+                            ` : `
+                                <button class="echo-btn echo-btn-primary echo-dashboard">
+                                    <span class="echo-btn-icon">🏠</span>
+                                    Open Dashboard
+                                </button>
+                            `}
                         </div>
                     </div>
                 </div>
             `;
 
             // Position popup for slide-in animation (right to left)
-            analysisPopup.style.cssText = `
+            universalPopup.style.cssText = `
                 position: fixed !important;
                 top: 0 !important;
                 right: -400px !important;
@@ -757,9 +974,9 @@ class EchoContentScript {
             `;
 
             // Add popup styles
-            if (!document.getElementById('echo-slide-popup-styles')) {
+            if (!document.getElementById('echo-universal-popup-styles')) {
                 const popupStyle = document.createElement('style');
-                popupStyle.id = 'echo-slide-popup-styles';
+                popupStyle.id = 'echo-universal-popup-styles';
                 popupStyle.textContent = `
                     .echo-slide-popup {
                         width: 100% !important;
@@ -965,44 +1182,93 @@ class EchoContentScript {
             }
 
             // Add event listeners
-            const closeBtn = analysisPopup.querySelector('.echo-close-btn');
+            const closeBtn = universalPopup.querySelector('.echo-close-btn');
             closeBtn.addEventListener('click', () => {
                 // Slide out animation
-                analysisPopup.style.right = '-400px';
-                setTimeout(() => analysisPopup.remove(), 300);
+                universalPopup.style.right = '-400px';
+                setTimeout(() => universalPopup.remove(), 300);
             });
 
-            const analyzeBtn = analysisPopup.querySelector('.echo-analyze');
-            analyzeBtn.addEventListener('click', () => {
-                chrome.runtime.sendMessage({
-                    type: 'OPEN_FULL_ANALYSIS',
-                    data: this.profileData
+            // Profile context buttons
+            const analyzeBtn = universalPopup.querySelector('.echo-analyze');
+            if (analyzeBtn) {
+                analyzeBtn.addEventListener('click', () => {
+                    chrome.runtime.sendMessage({
+                        type: 'OPEN_FULL_ANALYSIS',
+                        data: this.profileData
+                    });
+                    universalPopup.style.right = '-400px';
+                    setTimeout(() => universalPopup.remove(), 300);
                 });
-                analysisPopup.style.right = '-400px';
-                setTimeout(() => analysisPopup.remove(), 300);
-            });
+            }
 
-            const saveBtn = analysisPopup.querySelector('.echo-save');
-            saveBtn.addEventListener('click', () => {
-                chrome.runtime.sendMessage({
-                    type: 'SAVE_TO_CAMPAIGN',
-                    data: this.profileData
+            const saveBtn = universalPopup.querySelector('.echo-save');
+            if (saveBtn) {
+                saveBtn.addEventListener('click', () => {
+                    chrome.runtime.sendMessage({
+                        type: 'SAVE_TO_CAMPAIGN',
+                        data: this.profileData
+                    });
+                    universalPopup.style.right = '-400px';
+                    setTimeout(() => universalPopup.remove(), 300);
                 });
-                analysisPopup.style.right = '-400px';
-                setTimeout(() => analysisPopup.remove(), 300);
-            });
+            }
+
+            // Dashboard context buttons
+            const dashboardBtn = universalPopup.querySelector('.echo-dashboard');
+            if (dashboardBtn) {
+                dashboardBtn.addEventListener('click', () => {
+                    window.open('http://localhost:3000', '_blank');
+                    universalPopup.style.right = '-400px';
+                    setTimeout(() => universalPopup.remove(), 300);
+                });
+            }
+
+            // Campaigns dropdown change handler
+            const campaignsDropdown = universalPopup.querySelector('#campaignsDropdown');
+            if (campaignsDropdown) {
+                campaignsDropdown.addEventListener('change', (event) => {
+                    const selectedCampaignId = event.target.value;
+                    const selectedOption = event.target.selectedOptions[0];
+                    const campaignName = selectedOption?.dataset.name || 'Unknown Campaign';
+                    
+                    if (selectedCampaignId) {
+                        console.log(`📊 Content: Campaign selected - ID: ${selectedCampaignId}, Name: ${campaignName}`);
+                        
+                        // Send message to background script about campaign selection
+                        chrome.runtime.sendMessage({
+                            type: 'CAMPAIGN_SELECTED',
+                            data: {
+                                campaignId: selectedCampaignId,
+                                campaignName: campaignName,
+                                profileData: this.profileData // Include profile data if available
+                            }
+                        });
+                        
+                        // Show success feedback
+                        const originalText = event.target.style.borderColor;
+                        event.target.style.borderColor = '#10b981';
+                        event.target.style.backgroundColor = '#f0fdf4';
+                        
+                        setTimeout(() => {
+                            event.target.style.borderColor = '#e2e8f0';
+                            event.target.style.backgroundColor = 'white';
+                        }, 1500);
+                    }
+                });
+            }
 
             // Add to page
-            document.body.appendChild(analysisPopup);
+            document.body.appendChild(universalPopup);
 
             // Trigger slide-in animation
             setTimeout(() => {
-                analysisPopup.style.right = '0px';
+                universalPopup.style.right = '0px';
             }, 10);
 
-            console.log('✅ Slide-in analysis popup shown');
+            console.log('✅ Universal slide-in popup shown');
         } catch (error) {
-            console.error('Error showing inline analysis:', error);
+            console.error('Error showing universal popup:', error);
         }
     }
 
@@ -1030,6 +1296,12 @@ class EchoContentScript {
 
                     case 'REMOVE_ICON':
                         this.removeFloatingIcon();
+                        sendResponse({ success: true });
+                        break;
+
+                    case 'SHOW_UNIVERSAL_POPUP':
+                        // Show the same universal popup regardless of source
+                        this.showUniversalPopup();
                         sendResponse({ success: true });
                         break;
 
